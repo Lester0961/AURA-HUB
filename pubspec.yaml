@@ -1,0 +1,36 @@
+name: aurahub
+description: Glassmorphism music player
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  just_audio: ^0.9.36
+  provider: ^6.1.2
+  glassmorphism: ^3.0.0
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  google_sign_in: ^6.2.1
+  shared_preferences: ^2.3.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/audio/Sad.mp3
+    - assets/audio/Love.mp3
+    - assets/audio/Calm.mp3
+    - assets/audio/Energetic.mp3
+    - assets/audio/Rock.mp3
+    - assets/audio/Happy.mp3
+    - assets/images/happy_art.png
+    - assets/images/sad_art.png
+    - assets/images/love_art.png
+    - assets/images/calm_art.png
+    - assets/images/energetic_art.png
+    - assets/images/rock_art.png
+    - assets/images/aurahub_logo.png
