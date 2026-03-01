@@ -1,37 +1,89 @@
 {
   "project_info": {
-    "project_number": "617426288940",
-    "project_id": "aurahub-ff49a",
-    "storage_bucket": "aurahub-ff49a.firebasestorage.app"
+    "project_number": "1013663923740",
+    "project_id": "aurahub-lester-4b4a9",
+    "storage_bucket": "aurahub-lester-4b4a9.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:617426288940:android:a775afb072c4ff6f87ac89",
+        "mobilesdk_app_id": "1:1013663923740:android:3b07b1cc235690099369d9",
         "android_client_info": {
-          "package_name": "com.example.aurahub"
+          "package_name": "com.AURAHUB"
         }
       },
       "oauth_client": [
         {
-          "client_id": "617426288940-ff5dr62nplbd4hq4o01b0qtgusnaabuo.apps.googleusercontent.com",
+          "client_id": "1013663923740-ed2cpaidbbvqgk935kn1t9d8r252ff5s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.AURAHUB",
+            "certificate_hash": "f6d7e94365295c14ddc34df4791eb1802bbc7ef2"
+          }
+        },
+        {
+          "client_id": "1013663923740-kqel8sii3091kstto4n1joa7pb8c9d1h.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDyLnspwURMuN-YO6RrvMEOEF_-NiFqRYw"
+          "current_key": "AIzaSyDFuklu8LDUmewQTiAk07sYSDYU0_SAUow"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "617426288940-ff5dr62nplbd4hq4o01b0qtgusnaabuo.apps.googleusercontent.com",
+              "client_id": "1013663923740-kqel8sii3091kstto4n1joa7pb8c9d1h.apps.googleusercontent.com",
               "client_type": 3
             },
             {
-              "client_id": "617426288940-4rb58cs3qkj82ihj9egn1ihv7kii16bd.apps.googleusercontent.com",
+              "client_id": "1013663923740-9kcop0jlkng29a49tv91r28e5d3ud2n8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.aurahub"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1013663923740:android:14dcdd020f798feb9369d9",
+        "android_client_info": {
+          "package_name": "com.example.aurahub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1013663923740-02egue4au892bfm2uqhavpf58u3og208.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.aurahub",
+            "certificate_hash": "f6d7e94365295c14ddc34df4791eb1802bbc7ef2"
+          }
+        },
+        {
+          "client_id": "1013663923740-kqel8sii3091kstto4n1joa7pb8c9d1h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFuklu8LDUmewQTiAk07sYSDYU0_SAUow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1013663923740-kqel8sii3091kstto4n1joa7pb8c9d1h.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1013663923740-9kcop0jlkng29a49tv91r28e5d3ud2n8.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
                 "bundle_id": "com.example.aurahub"
