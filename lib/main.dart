@@ -138,18 +138,26 @@ class Playlist {
 class MoodConfig {
   final List<Color> gradient;
   final Color accent;
-  const MoodConfig({required this.gradient, required this.accent});
+  final Color particle;
+  final String shape;
+  final int count;
+  final double speed;
+  const MoodConfig({
+    required this.gradient, required this.accent,
+    required this.particle, required this.shape,
+    required this.count,    required this.speed,
+  });
 }
 
 MoodConfig moodCfg(String m) {
   switch (m) {
-    case 'Joyful':      return MoodConfig(gradient: [const Color(0xFFFF6B35), const Color(0xFFFF8E53)], accent: const Color(0xFFFF6B35));
-    case 'Melancholic': return MoodConfig(gradient: [const Color(0xFF2C3E7A), const Color(0xFF4A5BA0)], accent: const Color(0xFF4A5BA0));
-    case 'Calm':        return MoodConfig(gradient: [const Color(0xFF00695C), const Color(0xFF00897B)], accent: const Color(0xFF00897B));
-    case 'Energetic':   return MoodConfig(gradient: [const Color(0xFFE53935), const Color(0xFFFF5722)], accent: const Color(0xFFFF5722));
-    case 'Romantic':    return MoodConfig(gradient: [const Color(0xFF880E4F), const Color(0xFFAD1457)], accent: const Color(0xFFAD1457));
-    case 'Rock':        return MoodConfig(gradient: [const Color(0xFF212121), const Color(0xFF424242)], accent: const Color(0xFF757575));
-    default:            return MoodConfig(gradient: [const Color(0xFF1A1A2E), const Color(0xFF16213E)], accent: Colors.white);
+    case 'Joyful':      return const MoodConfig(gradient: [Color(0xFFFF6B35), Color(0xFFFF1493)], accent: Color(0xFFFF6B35), particle: Color(0xFFFFD700), shape: 'star',   count: 28, speed: 1.6);
+    case 'Melancholic': return const MoodConfig(gradient: [Color(0xFF1A1A2E), Color(0xFF6A0572)], accent: Color(0xFF6A0572), particle: Color(0xFFCE93D8), shape: 'circle', count: 20, speed: 0.55);
+    case 'Calm':        return const MoodConfig(gradient: [Color(0xFF0F3460), Color(0xFF16C79A)], accent: Color(0xFF16C79A), particle: Color(0xFF7FFFD4), shape: 'drop',   count: 16, speed: 0.45);
+    case 'Energetic':   return const MoodConfig(gradient: [Color(0xFF0052D4), Color(0xFFFFD700)], accent: Color(0xFF0052D4), particle: Color(0xFFFFD700), shape: 'bolt',   count: 30, speed: 2.5);
+    case 'Romantic':    return const MoodConfig(gradient: [Color(0xFF8B0000), Color(0xFFFF69B4)], accent: Color(0xFFFF69B4), particle: Color(0xFFFF69B4), shape: 'heart',  count: 22, speed: 0.9);
+    case 'Rock':        return const MoodConfig(gradient: [Color(0xFF1C1C1C), Color(0xFF434343)], accent: Color(0xFFFF4500), particle: Color(0xFFFF4500), shape: 'bolt',   count: 26, speed: 2.2);
+    default:            return const MoodConfig(gradient: [Color(0xFF1A1A2E), Color(0xFF16213E)], accent: Colors.white,     particle: Colors.white38,    shape: 'circle', count: 10, speed: 0.5);
   }
 }
 
@@ -165,6 +173,155 @@ IconData moodIcon(String m) {
   }
 }
 
+Color adaptiveText(List<Color> gradient, {bool secondary = false}) {
+  // Calculate perceived brightness of the first gradient color
+  final c = gradient[0];
+  final brightness = (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
+  final isDark = brightness < 0.5;
+  if (secondary) return isDark ? Colors.white54 : Colors.black45;
+  return isDark ? Colors.white : Colors.black87;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARTICLE ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _P {
+  double x, y, vx, vy, size, opacity, phase, rot, rotSpeed;
+  _P({required this.x, required this.y, required this.vx, required this.vy,
+    required this.size, required this.opacity, required this.phase,
+    required this.rot, required this.rotSpeed});
+}
+
+class MoodParticles extends StatefulWidget {
+  final String moodName;
+  final bool active;
+  const MoodParticles({super.key, required this.moodName, required this.active});
+  @override State<MoodParticles> createState() => _MoodParticlesState();
+}
+
+class _MoodParticlesState extends State<MoodParticles> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late List<_P> _ps;
+  final _rng = math.Random();
+  String _lastMood = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat();
+    _spawn(widget.moodName);
+    _ctrl.addListener(() { if (mounted) setState(() {}); });
+  }
+
+  void _spawn(String m) {
+    _lastMood = m;
+    final cfg = moodCfg(m);
+    _ps = List.generate(cfg.count, (_) {
+      final angle = _rng.nextDouble() * math.pi * 2;
+      final spd   = (0.001 + _rng.nextDouble() * 0.003) * cfg.speed;
+      return _P(x: _rng.nextDouble(), y: _rng.nextDouble(),
+          vx: math.cos(angle) * spd * 0.3, vy: -spd,
+          size: 5 + _rng.nextDouble() * 14, opacity: 0.25 + _rng.nextDouble() * 0.65,
+          phase: _rng.nextDouble() * math.pi * 2, rot: _rng.nextDouble() * math.pi * 2,
+          rotSpeed: (_rng.nextDouble() - 0.5) * 0.04);
+    });
+  }
+
+  @override
+  void didUpdateWidget(MoodParticles old) {
+    super.didUpdateWidget(old);
+    if (old.moodName != widget.moodName) _spawn(widget.moodName);
+  }
+
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.shrink();
+    final cfg = moodCfg(_lastMood);
+    return IgnorePointer(
+        child: CustomPaint(
+            painter: _PPainter(ps: _ps, color: cfg.particle, shape: cfg.shape, t: _ctrl.value),
+            size: Size.infinite));
+  }
+}
+
+class _PPainter extends CustomPainter {
+  final List<_P> ps;
+  final Color color;
+  final String shape;
+  final double t;
+  const _PPainter({required this.ps, required this.color, required this.shape, required this.t});
+
+  @override
+  void paint(Canvas canvas, Size sz) {
+    for (final p in ps) {
+      double y = ((p.y + p.vy * t * 120) % 1.0 + 1.0) % 1.0;
+      y = 1.0 - y;
+      final x  = (p.x + p.vx * t * 120 + math.sin(t * math.pi * 2 + p.phase) * 0.035) % 1.0;
+      final pulse = 0.6 + 0.4 * math.sin(t * math.pi * 4 + p.phase);
+      final paint = Paint()
+        ..color = color.withValues(alpha: (p.opacity * pulse).clamp(0.0, 1.0))
+        ..style = PaintingStyle.fill;
+      canvas.save();
+      canvas.translate(x * sz.width, y * sz.height);
+      canvas.rotate(p.rot + p.rotSpeed * t * 120);
+      switch (shape) {
+        case 'star':  _star(canvas, p.size, paint);  break;
+        case 'heart': _heart(canvas, p.size, paint); break;
+        case 'bolt':  _bolt(canvas, p.size, paint);  break;
+        case 'drop':  _drop(canvas, p.size, paint);  break;
+        default:
+          canvas.drawCircle(Offset.zero, p.size / 2, paint);
+      }
+      canvas.restore();
+    }
+  }
+
+  void _star(Canvas c, double s, Paint p) {
+    final path = Path();
+    for (int i = 0; i < 5; i++) {
+      final a = -math.pi / 2 + i * 2 * math.pi / 5;
+      final b = a + math.pi / 5;
+      if (i == 0) path.moveTo(math.cos(a)*s/2, math.sin(a)*s/2);
+      else         path.lineTo(math.cos(a)*s/2, math.sin(a)*s/2);
+      path.lineTo(math.cos(b)*s/4, math.sin(b)*s/4);
+    }
+    path.close(); c.drawPath(path, p);
+  }
+
+  void _heart(Canvas c, double s, Paint p) {
+    c.drawPath(Path()
+      ..moveTo(0, s/4)
+      ..cubicTo(-s/2, -s/6, -s/2, -s/2, 0, -s/6)
+      ..cubicTo( s/2, -s/2,  s/2, -s/6, 0,  s/4), p);
+  }
+
+  void _bolt(Canvas c, double s, Paint p) {
+    c.drawPath(Path()
+      ..moveTo(s*.1,-s/2) ..lineTo(-s*.1,-s*.05) ..lineTo(s*.15,-s*.05)
+      ..lineTo(-s*.1, s/2) ..lineTo(s*.3,-s*.1)  ..lineTo(s*.05,-s*.1)
+      ..close(), p);
+  }
+
+  void _drop(Canvas c, double s, Paint p) {
+    c.drawPath(Path()
+      ..moveTo(0,-s/2) ..cubicTo(s/3,-s/4,s/3,s/4,0,s/2)
+      ..cubicTo(-s/3,s/4,-s/3,-s/4,0,-s/2) ..close(), p);
+  }
+
+  @override bool shouldRepaint(_PPainter o) => o.t != t || o.color != color;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// YOUTUBE HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool isYouTubeUrl(String url) {
+  return url.contains('youtube.com') || url.contains('youtu.be');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +329,11 @@ IconData moodIcon(String m) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (_) {}
+
   await loadSongs();
   await loadDownloadedPaths();
   _currentQueue = List.from(kSongs);
@@ -253,18 +414,14 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
   @override
   void dispose() {
-    _eCtrl.dispose();
-    _pCtrl.dispose();
-    _ac.dispose();
-    super.dispose();
+    _eCtrl.dispose(); _pCtrl.dispose(); _ac.dispose(); super.dispose();
   }
 
   Future<void> _login() async {
     setState(() { _loading = true; _err = null; });
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _eCtrl.text.trim(),
-        password: _pCtrl.text.trim(),
+        email: _eCtrl.text.trim(), password: _pCtrl.text.trim(),
       );
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => _err = _friendly(e.code));
@@ -305,8 +462,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [Color(0xFF0A0A0A), Color(0xFF0A1A2E), Color(0xFF0A0A0A)],
           ),
         ),
@@ -324,13 +480,8 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       children: [
                         Container(
                           width: 80, height: 80,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(colors: [Color(0xFF6A0572), Color(0xFFFF1493)]),
-                          ),
-                          child: const Center(
-                            child: Text('♪', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
-                          ),
+                          decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFF6A0572), Color(0xFFFF1493)])),
+                          child: const Center(child: Text('♪', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900))),
                         ),
                         const SizedBox(height: 16),
                         const Text('AURA HUB', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 6)),
@@ -352,8 +503,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   const _Label('Password'),
                   const SizedBox(height: 6),
                   _Field(
-                    ctrl: _pCtrl, hint: 'Enter your password',
-                    icon: Icons.lock_outline_rounded, obs: _obs,
+                    ctrl: _pCtrl, hint: 'Enter your password', icon: Icons.lock_outline_rounded, obs: _obs,
                     suffix: IconButton(
                       icon: Icon(_obs ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white38, size: 20),
                       onPressed: () => setState(() => _obs = !_obs),
@@ -362,21 +512,16 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   const SizedBox(height: 28),
                   _BigBtn(label: 'Sign In', loading: _loading, disabled: _loading || _gLoading, onTap: _login),
                   const SizedBox(height: 16),
-                  const Row(
-                    children: [
-                      Expanded(child: Divider(color: Colors.white12)),
-                      Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or', style: TextStyle(color: Colors.white38, fontSize: 13))),
-                      Expanded(child: Divider(color: Colors.white12)),
-                    ],
-                  ),
+                  const Row(children: [
+                    Expanded(child: Divider(color: Colors.white12)),
+                    Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or', style: TextStyle(color: Colors.white38, fontSize: 13))),
+                    Expanded(child: Divider(color: Colors.white12)),
+                  ]),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity, height: 54,
                     child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.white24),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
+                      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       onPressed: (_loading || _gLoading) ? null : _googleLogin,
                       child: _gLoading
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -460,18 +605,15 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         showDialog(
-          context: context,
-          barrierDismissible: false,
+          context: context, barrierDismissible: false,
           builder: (_) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 24),
-                SizedBox(width: 10),
-                Text('Account Created!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
-              ],
-            ),
+            title: const Row(children: [
+              Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 24),
+              SizedBox(width: 10),
+              Text('Account Created!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+            ]),
             content: const Text('Account created successfully. Please sign in.', style: TextStyle(color: Colors.white60, fontSize: 14)),
             actions: [
               ElevatedButton(
@@ -543,8 +685,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                   const SizedBox(height: 16),
                   const _Label('Password'),
                   const SizedBox(height: 6),
-                  _Field(
-                    ctrl: _pCtrl, hint: 'Create a password', icon: Icons.lock_outline_rounded, obs: _obs,
+                  _Field(ctrl: _pCtrl, hint: 'Create a password', icon: Icons.lock_outline_rounded, obs: _obs,
                     suffix: IconButton(
                       icon: Icon(_obs ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white38, size: 20),
                       onPressed: () => setState(() => _obs = !_obs),
@@ -553,8 +694,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                   const SizedBox(height: 16),
                   const _Label('Confirm Password'),
                   const SizedBox(height: 6),
-                  _Field(
-                    ctrl: _cCtrl, hint: 'Repeat your password', icon: Icons.lock_outline_rounded, obs: _obsC,
+                  _Field(ctrl: _cCtrl, hint: 'Repeat your password', icon: Icons.lock_outline_rounded, obs: _obsC,
                     suffix: IconButton(
                       icon: Icon(_obsC ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white38, size: 20),
                       onPressed: () => setState(() => _obsC = !_obsC),
@@ -587,7 +727,8 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN PAGE
+// ADMIN PAGE  — Fixed: logout confirm, delete confirm, YouTube URL support,
+//               friendlier UI with header stats, cleaner add-song form.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AdminPage extends StatefulWidget {
@@ -612,20 +753,66 @@ class _AdminPageState extends State<AdminPage> {
     super.dispose();
   }
 
+  // Admin Fix 1: Confirm logout
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.logout_rounded, color: Colors.redAccent, size: 22),
+          SizedBox(width: 10),
+          Text('Sign Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        ]),
+        content: const Text('Are you sure you want to sign out of Admin?', style: TextStyle(color: Colors.white60, fontSize: 14)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            onPressed: () async {
+              Navigator.pop(context);
+              await globalPlayer.stop();
+              await GoogleSignIn().signOut();
+              await FirebaseAuth.instance.signOut();
+            },
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+  }
+  String _convertToRawUrl(String url) {
+    // Convert GitHub blob URL to raw URL automatically
+    // https://github.com/user/repo/blob/main/file.mp3
+    // → https://raw.githubusercontent.com/user/repo/main/file.mp3
+    if (url.contains('github.com') && url.contains('/blob/')) {
+      return url
+          .replaceFirst('github.com', 'raw.githubusercontent.com')
+          .replaceFirst('/blob/', '/');
+    }
+    return url;
+  }
+
   void _addSong() {
-    final title  = _titleCtrl.text.trim();
-    final url    = _urlCtrl.text.trim();
+    final title = _titleCtrl.text.trim();
+    String url  = _convertToRawUrl(_urlCtrl.text.trim());
     if (title.isEmpty || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Title and MP3 URL are required.'), backgroundColor: Colors.redAccent));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Title and URL are required.'), backgroundColor: Colors.redAccent),
+      );
       return;
     }
+    // Block YouTube and show clear explanation
+    if (isYouTubeUrl(url)) { _showYouTubeHelp(); return; }
+    final artUrl = _artCtrl.text.trim();
     setState(() {
       kSongs.add({
         'title':   title,
         'artist':  _artistCtrl.text.trim().isEmpty ? 'Aura Collective' : _artistCtrl.text.trim(),
         'mood':    _mood,
         'path':    url,
-        'art':     _artCtrl.text.trim().isEmpty ? 'assets/images/happy_art.png' : _artCtrl.text.trim(),
+        'art':     artUrl.isEmpty ? 'assets/images/happy_art.png' : artUrl,
         'isAsset': 'false',
       });
       _currentQueue = List.from(kSongs);
@@ -634,17 +821,138 @@ class _AdminPageState extends State<AdminPage> {
       _adding = false;
     });
     saveSongs();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"$title" added!'), backgroundColor: Colors.greenAccent.shade700));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"$title" added!'), backgroundColor: Colors.greenAccent.shade700),
+    );
   }
 
+  /// Explains clearly why YouTube links do not work and what to use instead.
+  void _showYouTubeHelp() {
+    showDialog(context: context, builder: (_) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Row(children: [
+        Icon(Icons.block_rounded, color: Colors.redAccent, size: 22), SizedBox(width: 10),
+        Expanded(child: Text('YouTube Links Don\'t Work', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15))),
+      ]),
+      content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3))),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 16), SizedBox(width: 8),
+              Expanded(child: Text('YouTube actively blocks apps from streaming audio directly. Pasting a YouTube URL here will not play the song.', style: TextStyle(color: Colors.redAccent, fontSize: 11, height: 1.5))),
+            ])),
+        const SizedBox(height: 14),
+        const Text('✅  What DOES work:', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 8),
+        _HelpTile('Direct MP3 link', 'Any URL ending in .mp3 .m4a .ogg or .wav that plays in a browser.\nExample: https://example.com/mysong.mp3'),
+        const SizedBox(height: 8),
+        _HelpTile('archive.org  (best free option)', '1. Go to archive.org → Upload your MP3 (free account).\n2. Open your uploaded file.\n3. Right-click the audio player → "Copy audio address".\n4. Paste that URL here.'),
+        const SizedBox(height: 8),
+        _HelpTile('Dropbox', '1. Upload MP3 to Dropbox.\n2. Share → copy link.\n3. Change "?dl=0" at the end to "?dl=1".\n4. Paste here.'),
+        const SizedBox(height: 8),
+        _HelpTile('GitHub Raw', '1. Upload MP3 to a public GitHub repo.\n2. Click the file → click "Raw".\n3. Copy the URL (starts with raw.githubusercontent.com).\n4. Paste here.'),
+        const SizedBox(height: 14),
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.greenAccent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3))),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.lightbulb_outline_rounded, color: Colors.greenAccent, size: 16), SizedBox(width: 8),
+              Expanded(child: Text('Easiest: Use archive.org — totally free, no size limit, permanent direct link.', style: TextStyle(color: Colors.greenAccent, fontSize: 11, height: 1.5))),
+            ])),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Got it', style: TextStyle(color: Colors.white38))),
+        ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            onPressed: () { Navigator.pop(context); _urlCtrl.clear(); setState(() {}); },
+            child: const Text('Clear URL & retry', style: TextStyle(fontWeight: FontWeight.w700))),
+      ],
+    ));
+  }
+
+  /// Shows free image hosting options — no database needed.
+  void _showImageHelp() {
+    const hosts = [
+      {'name': 'Imgur',      'desc': 'Free, no account needed. Upload → right-click image → Copy image address', 'url': 'imgur.com/upload'},
+      {'name': 'ImgBB',      'desc': 'Free. Upload → click image → copy "Direct link"',                         'url': 'imgbb.com'},
+      {'name': 'PostImages', 'desc': 'Free, no account. Upload → copy "Direct link"',                           'url': 'postimages.org'},
+      {'name': 'GitHub Raw', 'desc': 'Upload to a public repo → click file → "Raw" button → copy URL',         'url': 'github.com'},
+    ];
+    showDialog(context: context, builder: (_) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Row(children: [
+        Icon(Icons.image_outlined, color: Color(0xFF64B5F6), size: 22), SizedBox(width: 10),
+        Text('Free Image Hosting Guide', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+      ]),
+      content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.greenAccent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3))),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.lightbulb_outline_rounded, color: Colors.greenAccent, size: 16), SizedBox(width: 8),
+              Expanded(child: Text('No database needed! Upload your cover image to any free service and paste the direct link here.', style: TextStyle(color: Colors.greenAccent, fontSize: 11, height: 1.5))),
+            ])),
+        const SizedBox(height: 14),
+        ...hosts.map((h) => Container(
+          margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(h['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 3),
+            Text(h['desc']!, style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.5)),
+            const SizedBox(height: 2),
+            Text(h['url']!, style: const TextStyle(color: Color(0xFF64B5F6), fontSize: 10)),
+          ]),
+        )),
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF64B5F6).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF64B5F6).withValues(alpha: 0.3))),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.check_circle_outline_rounded, color: Color(0xFF64B5F6), size: 16), SizedBox(width: 8),
+              Expanded(child: Text('Make sure the link ends in .jpg .png .webp or .gif and shows only the image when opened in a browser.', style: TextStyle(color: Color(0xFF64B5F6), fontSize: 11, height: 1.5))),
+            ])),
+      ])),
+      actions: [
+        ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it', style: TextStyle(fontWeight: FontWeight.w700))),
+      ],
+    ));
+  }
+
+  // Admin Fix 2: Confirm delete
   void _confirmDelete(Map<String, String> song) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Song', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-        content: Text('Delete "${song['title']}"?', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+        title: const Row(children: [
+          Icon(Icons.delete_rounded, color: Colors.redAccent, size: 22),
+          SizedBox(width: 10),
+          Text('Delete Song', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to delete:', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), gradient: LinearGradient(colors: moodCfg(song['mood'] ?? 'Joyful').gradient)),
+                    child: Center(child: Icon(moodIcon(song['mood'] ?? 'Joyful'), color: Colors.white, size: 18)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(song['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('This action cannot be undone.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ],
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
           ElevatedButton(
@@ -656,6 +964,9 @@ class _AdminPageState extends State<AdminPage> {
                 _currentQueue = List.from(kSongs);
               });
               saveSongs();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('"${song['title']}" deleted.'), backgroundColor: Colors.redAccent),
+              );
             },
             child: const Text('Delete'),
           ),
@@ -666,49 +977,49 @@ class _AdminPageState extends State<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
+    final builtIn = kSongs.where((s) => s['isAsset'] == 'true').length;
+    final custom  = kSongs.length - builtIn;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111111),
         elevation: 0,
-        title: const Row(
-          children: [
-            Icon(Icons.admin_panel_settings_rounded, color: Color(0xFFFF1493), size: 22),
-            SizedBox(width: 10),
-            Text('Admin Panel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
-          ],
-        ),
+        title: const Row(children: [
+          Icon(Icons.admin_panel_settings_rounded, color: Color(0xFFFF1493), size: 22),
+          SizedBox(width: 10),
+          Text('Admin Panel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+        ]),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            onPressed: () async {
-              await globalPlayer.stop();
-              await GoogleSignIn().signOut();
-              await FirebaseAuth.instance.signOut();
-            },
+            tooltip: 'Sign Out',
+            onPressed: _confirmLogout, // Fix 1: confirm before logout
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Header
+          // Stats header
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF6A0572), Color(0xFFFF1493)]),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Row(
               children: [
-                const Icon(Icons.music_note_rounded, color: Colors.white, size: 28),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('AuraHub Admin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-                    Text('${kSongs.length} songs in library', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                  ],
+                const Icon(Icons.music_note_rounded, color: Colors.white, size: 32),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('AuraHub Admin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+                      const SizedBox(height: 4),
+                      Text('${kSongs.length} total  •  $builtIn built-in  •  $custom custom', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -726,13 +1037,13 @@ class _AdminPageState extends State<AdminPage> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: _adding ? const Color(0xFFFF1493) : Colors.white12),
               ),
-              child: Row(
-                children: [
-                  Icon(_adding ? Icons.expand_less_rounded : Icons.add_circle_rounded, color: const Color(0xFFFF1493), size: 22),
-                  const SizedBox(width: 10),
-                  const Text('Add New Song', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                ],
-              ),
+              child: Row(children: [
+                Icon(_adding ? Icons.expand_less_rounded : Icons.add_circle_rounded, color: const Color(0xFFFF1493), size: 22),
+                const SizedBox(width: 10),
+                const Text('Add New Song', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                const Spacer(),
+                if (!_adding) const Text('Tap to expand', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ]),
             ),
           ),
 
@@ -746,11 +1057,99 @@ class _AdminPageState extends State<AdminPage> {
                 children: [
                   _AdminField(ctrl: _titleCtrl, label: 'Song Title *', hint: 'e.g. Midnight Vibes', icon: Icons.title_rounded),
                   const SizedBox(height: 12),
-                  _AdminField(ctrl: _artistCtrl, label: 'Artist', hint: 'e.g. Aura Collective', icon: Icons.person_outline_rounded),
+                  _AdminField(ctrl: _artistCtrl, label: 'Artist', hint: 'e.g. Aura Collective (optional)', icon: Icons.person_outline_rounded),
                   const SizedBox(height: 12),
-                  _AdminField(ctrl: _urlCtrl, label: 'MP3 URL *', hint: 'https://example.com/song.mp3', icon: Icons.link_rounded),
+                  // Audio URL — live YouTube detection
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const _Label('Audio URL *'),
+                    const SizedBox(height: 6),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isYouTubeUrl(_urlCtrl.text) ? const Color(0xFFFF8C00) : Colors.white12),
+                      ),
+                      child: Row(children: [
+                        Expanded(child: TextField(
+                          controller: _urlCtrl,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          decoration: const InputDecoration(
+                            hintText: 'https://...  (direct MP3 link only)',
+                            hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
+                            prefixIcon: Icon(Icons.link_rounded, color: Colors.white38, size: 18),
+                            border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        )),
+                        if (isYouTubeUrl(_urlCtrl.text))
+                          GestureDetector(
+                            onTap: _showYouTubeHelp,
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                              decoration: BoxDecoration(color: const Color(0xFFFF8C00).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.warning_amber_rounded, color: Color(0xFFFF8C00), size: 13),
+                                SizedBox(width: 4),
+                                Text("Won't work", style: TextStyle(color: Color(0xFFFF8C00), fontSize: 11, fontWeight: FontWeight.w700)),
+                              ]),
+                            ),
+                          ),
+                      ]),
+                    ),
+                    if (isYouTubeUrl(_urlCtrl.text)) ...[
+                      const SizedBox(height: 6),
+                      Container(padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: const Color(0xFFFF8C00).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFF8C00).withValues(alpha: 0.3))),
+                          child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Icon(Icons.info_outline_rounded, color: Color(0xFFFF8C00), size: 14), SizedBox(width: 8),
+                            Expanded(child: Text("YouTube links can't stream in apps. Tap \"Won't work\" above to learn what to use instead.", style: TextStyle(color: Color(0xFFFF8C00), fontSize: 11, height: 1.5))),
+                          ])),
+                    ],
+                  ]),
                   const SizedBox(height: 12),
-                  _AdminField(ctrl: _artCtrl, label: 'Cover Image URL', hint: 'https://example.com/art.png (optional)', icon: Icons.image_outlined),
+                  // Cover image URL with help button + live preview
+                  Row(children: [
+                    const _Label('Cover Image URL'),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _showImageHelp,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFF64B5F6).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF64B5F6).withValues(alpha: 0.3))),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.help_outline_rounded, color: Color(0xFF64B5F6), size: 13),
+                          SizedBox(width: 4),
+                          Text('How to get a free image link', style: TextStyle(color: Color(0xFF64B5F6), fontSize: 10, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+                    child: TextField(
+                      controller: _artCtrl,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: const InputDecoration(
+                        hintText: 'https://i.imgur.com/xxxxx.jpg  (optional)',
+                        hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
+                        prefixIcon: Icon(Icons.image_outlined, color: Colors.white38, size: 18),
+                        border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                  if (_artCtrl.text.trim().startsWith('http')) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      const Text('Preview: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      const SizedBox(width: 8),
+                      ClipRRect(borderRadius: BorderRadius.circular(8),
+                          child: Image.network(_artCtrl.text.trim(), width: 52, height: 52, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(width: 52, height: 52, color: Colors.white10, child: const Icon(Icons.broken_image_rounded, color: Colors.white24)))),
+                    ]),
+                  ],
                   const SizedBox(height: 16),
                   const _Label('Mood'),
                   const SizedBox(height: 8),
@@ -758,7 +1157,7 @@ class _AdminPageState extends State<AdminPage> {
                     spacing: 8, runSpacing: 8,
                     children: _moods.map((m) {
                       final sel = _mood == m;
-                      final mc = moodCfg(m);
+                      final mc  = moodCfg(m);
                       return GestureDetector(
                         onTap: () => setState(() => _mood = m),
                         child: AnimatedContainer(
@@ -769,50 +1168,56 @@ class _AdminPageState extends State<AdminPage> {
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: sel ? mc.accent : Colors.white24),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(moodIcon(m), size: 14, color: sel ? Colors.white : Colors.white54),
-                              const SizedBox(width: 5),
-                              Text(m, style: TextStyle(color: sel ? Colors.white : Colors.white54, fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
-                            ],
-                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(moodIcon(m), size: 14, color: sel ? Colors.white : Colors.white54),
+                            const SizedBox(width: 5),
+                            Text(m, style: TextStyle(color: sel ? Colors.white : Colors.white54, fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+                          ]),
                         ),
                       );
                     }).toList(),
                   ),
                   const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF1493), foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        onPressed: () => setState(() { _adding = false; _titleCtrl.clear(); _artistCtrl.clear(); _urlCtrl.clear(); _artCtrl.clear(); }),
+                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
                       ),
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add Song', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                      onPressed: _addSong,
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF1493), foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add Song', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        onPressed: _addSong,
+                      ),
+                    ),
+                  ]),
                 ],
               ),
             ),
           ],
 
           const SizedBox(height: 24),
-          Row(
-            children: [
-              const Text('SONG LIBRARY', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
-              const Spacer(),
-              Text('${kSongs.length} tracks', style: const TextStyle(color: Colors.white24, fontSize: 11)),
-            ],
-          ),
+          Row(children: [
+            const Text('SONG LIBRARY', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('${kSongs.length} tracks', style: const TextStyle(color: Colors.white24, fontSize: 11)),
+          ]),
           const SizedBox(height: 12),
 
           ...kSongs.map((song) {
-            final mc = moodCfg(song['mood'] ?? 'Joyful');
+            final mc      = moodCfg(song['mood'] ?? 'Joyful');
             final isAsset = song['isAsset'] == 'true';
+            final isYT    = song['isYouTube'] == 'true';
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
@@ -828,30 +1233,21 @@ class _AdminPageState extends State<AdminPage> {
                   child: Center(child: Icon(moodIcon(song['mood'] ?? 'Joyful'), color: Colors.white, size: 20)),
                 ),
                 title: Text(song['title'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                subtitle: Row(
+                subtitle: Wrap(
+                  spacing: 6, runSpacing: 4,
                   children: [
                     Text(song['artist'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(color: mc.accent.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                      child: Text(song['mood'] ?? '', style: TextStyle(color: mc.accent, fontSize: 10, fontWeight: FontWeight.w600)),
-                    ),
-                    if (isAsset) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
-                        child: const Text('BUILT-IN', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w600)),
-                      ),
-                    ],
+                    _Chip(song['mood'] ?? '', mc.accent),
+                    if (isAsset) _Chip('BUILT-IN', Colors.white24),
+                    if (isYT)    _Chip('YouTube', const Color(0xFFFF0000)),
                   ],
                 ),
                 trailing: isAsset
                     ? const Icon(Icons.lock_outline_rounded, color: Colors.white24, size: 18)
                     : IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
-                  onPressed: () => _confirmDelete(song),
+                  tooltip: 'Delete song',
+                  onPressed: () => _confirmDelete(song), // Fix 2: confirm delete
                 ),
               ),
             );
@@ -862,6 +1258,20 @@ class _AdminPageState extends State<AdminPage> {
           const SizedBox(height: 30),
         ],
       ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _Chip(this.label, this.color);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -877,8 +1287,7 @@ class _AdminField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Label(label),
-        const SizedBox(height: 6),
+        if (label.isNotEmpty) ...[_Label(label), const SizedBox(height: 6)],
         Container(
           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
           child: TextField(
@@ -897,7 +1306,9 @@ class _AdminField extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOME PAGE
+// HOME PAGE  — User Fix 1: animated mood background
+//              User Fix 2: mini player on playlists tab
+//              User Fix 7: playing indicator on song list
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AuraHomePage extends StatefulWidget {
@@ -911,7 +1322,8 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
   late TabController _tabCtrl;
   int _curIdx = 0;
   String _selMood = 'All';
-  String _searchQ = '';
+  String _searchQ  = '';
+  bool   _playing  = false;
 
   @override
   void initState() {
@@ -919,6 +1331,7 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
     _tabCtrl = TabController(length: 2, vsync: this);
     globalPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
+      setState(() => _playing = state.playing);
       if (state.processingState == ProcessingState.completed) _playNextInQueue();
     });
     currentMoodNotifier.addListener(_rebuild);
@@ -945,7 +1358,7 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
   Future<void> _playSongFromQueue(int idx) async {
     if (idx < 0 || idx >= _currentQueue.length) return;
     _currentQueueIdx = idx;
-    final song = _currentQueue[idx];
+    final song    = _currentQueue[idx];
     final newMood = song['mood'] ?? 'Joyful';
     currentMoodNotifier.value = newMood;
     currentSongNotifier.value = song;
@@ -1054,12 +1467,14 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
     );
   }
 
-  void _addToPlaylistSheet({Map<String, String>? preSelected}) {
+  // Fix 5: Filter out songs already in playlist
+  void _addToPlaylistSheet({Map<String, String>? preSelected, Playlist? targetPlaylist}) {
     final selected = <int>{};
     if (preSelected != null) {
       final i = kSongs.indexWhere((s) => s['title'] == preSelected['title']);
       if (i != -1) selected.add(i);
     }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -1077,23 +1492,33 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
                     Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
                     const SizedBox(height: 16),
                     const Text('Add to Playlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17)),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 4),
+                    if (targetPlaylist != null)
+                      Text('Selecting for "${targetPlaylist.name}"', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                    const SizedBox(height: 8),
                     Expanded(
                       child: ListView.builder(
                         controller: sc, itemCount: kSongs.length,
                         itemBuilder: (_, i) {
-                          final s = kSongs[i];
-                          final sel = selected.contains(i);
-                          final mc = moodCfg(s['mood']!);
+                          final s    = kSongs[i];
+                          final sel  = selected.contains(i);
+                          final mc   = moodCfg(s['mood']!);
+                          // Fix 5: mark already-added songs
+                          final alreadyIn = targetPlaylist != null && targetPlaylist.songs.any((e) => e['title'] == s['title']);
                           return ListTile(
                             leading: Container(
                               width: 40, height: 40,
                               decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), gradient: LinearGradient(colors: mc.gradient)),
                               child: sel ? const Icon(Icons.check_rounded, color: Colors.white, size: 20) : null,
                             ),
-                            title: Text(s['title']!, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                            subtitle: Text(s['artist']!, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                            onTap: () => ss(() => sel ? selected.remove(i) : selected.add(i)),
+                            title: Text(s['title']!, style: TextStyle(color: alreadyIn ? Colors.white38 : Colors.white, fontSize: 14)),
+                            subtitle: Text(
+                              alreadyIn ? '${s['artist']!} · Already added' : s['artist']!,
+                              style: TextStyle(color: alreadyIn ? Colors.white24 : Colors.white38, fontSize: 12),
+                            ),
+                            trailing: alreadyIn ? const Icon(Icons.check_circle_rounded, color: Colors.white24, size: 18) : null,
+                            enabled: !alreadyIn,
+                            onTap: alreadyIn ? null : () => ss(() => sel ? selected.remove(i) : selected.add(i)),
                           );
                         },
                       ),
@@ -1109,9 +1534,23 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
                             onPressed: () {
-                              if (globalPlaylists.isEmpty) { Navigator.pop(context); _createPlaylistDialog(); return; }
-                              Navigator.pop(context);
-                              _pickPlaylistSheet(selected.map((i) => kSongs[i]).toList());
+                              if (targetPlaylist != null) {
+                                for (final i in selected) {
+                                  final s = kSongs[i];
+                                  if (!targetPlaylist.songs.any((e) => e['title'] == s['title'])) {
+                                    targetPlaylist.songs.add(s);
+                                  }
+                                }
+                                notifyPlaylistChanged();
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Added ${selected.length} song${selected.length == 1 ? '' : 's'} to "${targetPlaylist.name}"'), backgroundColor: Colors.white24),
+                                );
+                              } else {
+                                if (globalPlaylists.isEmpty) { Navigator.pop(context); _createPlaylistDialog(); return; }
+                                Navigator.pop(context);
+                                _pickPlaylistSheet(selected.map((i) => kSongs[i]).toList());
+                              }
                             },
                             child: Text('Add ${selected.length} song${selected.length == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w700)),
                           ),
@@ -1197,7 +1636,7 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
                         backgroundColor: const Color(0xFF1E1E1E),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         title: const Text('Sign Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                        content: const Text('Are you sure?', style: TextStyle(color: Colors.white60, fontSize: 14)),
+                        content: const Text('Are you sure you want to sign out?', style: TextStyle(color: Colors.white60, fontSize: 14)),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(dlg), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
                           ElevatedButton(
@@ -1227,85 +1666,119 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final curMood = currentMoodNotifier.value;
-    final curSong = currentSongNotifier.value;
+    final user     = FirebaseAuth.instance.currentUser;
+    final curMood  = currentMoodNotifier.value;
+    final curSong  = currentSongNotifier.value;
     final curColors = moodCfg(curMood).gradient;
-    final initial = (user?.displayName?.isNotEmpty == true ? user!.displayName![0] : user?.email?[0] ?? 'A').toUpperCase();
+    final initial  = (user?.displayName?.isNotEmpty == true ? user!.displayName![0] : user?.email?[0] ?? 'A').toUpperCase();
     final filtered = kSongs.where((s) {
       return (_selMood == 'All' || s['mood'] == _selMood) && s['title']!.toLowerCase().contains(_searchQ.toLowerCase());
     }).toList();
 
+    final isActive = _playing && curSong.isNotEmpty;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('AURA HUB', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 3)),
-                        Text('${kSongs.length} tracks', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _profileSheet,
-                    child: Container(
-                      width: 40, height: 40,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFF6A0572), Color(0xFFFF1493)])),
-                      child: Center(child: Text(initial, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800))),
-                    ),
-                  ),
-                ],
+      body: Stack(
+        children: [
+          // ── FULL MOOD BACKGROUND — entire screen changes colour ──
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: isActive
+                    ? [curColors[0], curColors[1]]
+                    : [const Color(0xFF0A0A0A), const Color(0xFF1A1A2E)],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(14)),
-                child: TabBar(
-                  controller: _tabCtrl,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                  labelColor: Colors.black,
-                  unselectedLabelColor: Colors.white54,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  dividerColor: Colors.transparent,
-                  tabs: const [Tab(text: 'Songs'), Tab(text: 'Library')],
+            child: const SizedBox.expand(),
+          ),
+          // ── PARTICLES — same rich engine as NowPlaying ──────────
+          MoodParticles(moodName: curMood, active: isActive),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('AURA HUB', style: TextStyle(color: adaptiveText(curColors), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 3)),
+                            Text('${kSongs.length} tracks', style: TextStyle(color: adaptiveText(curColors, secondary: true), fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _profileSheet,
+                        child: Container(
+                          width: 40, height: 40,
+                          decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFF6A0572), Color(0xFFFF1493)])),
+                          child: Center(child: Text(initial, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800))),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: TabBarView(
-                controller: _tabCtrl,
-                children: [
-                  _SongsTab(
-                    filtered: filtered, selMood: _selMood, searchCtrl: _searchCtrl,
-                    onMoodChange: (m) => setState(() => _selMood = m),
-                    onSearch: (v) => setState(() => _searchQ = v),
-                    onTap: (i) { _playSong(i); _openNowPlaying(kSongs, i); },
-                    onLongPress: (s) => _addToPlaylistSheet(preSelected: s),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white10,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: TabBar(
+                      controller: _tabCtrl,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                      labelColor: isActive ? (adaptiveText(curColors) == Colors.white ? Colors.black : Colors.white) : Colors.black,
+                      unselectedLabelColor: isActive ? adaptiveText(curColors, secondary: true) : Colors.white54,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      dividerColor: Colors.transparent,
+                      tabs: const [Tab(text: 'Songs'), Tab(text: 'Library')],
+                    ),
                   ),
-                  _PlaylistsTab(
-                    playlists: globalPlaylists,
-                    onCreate: _createPlaylistDialog,
-                    onDelete: _deletePlaylist,
-                    onAddSongs: () => _addToPlaylistSheet(),
-                    onPlay: (pl, i) { _playFromPlaylist(pl, i); _openNowPlaying(pl.songs, i); },
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabCtrl,
+                    children: [
+                      _SongsTab(
+                        filtered: filtered, selMood: _selMood, searchCtrl: _searchCtrl,
+                        onMoodChange: (m) => setState(() => _selMood = m),
+                        onSearch: (v) => setState(() => _searchQ = v),
+                        onTap: (i) { _playSong(i); _openNowPlaying(kSongs, i); },
+                        onLongPress: (s) => _addToPlaylistSheet(preSelected: s),
+                        currentSong: curSong,
+                        colors: curColors,        // ADD THIS
+                        isActive: isActive,       // ADD THIS
+                      ),
+                      // Fix 2: pass mini player builder to library tab
+                      _LibraryTab(
+                        playlists: globalPlaylists,
+                        downloadedSongs: kSongs.where((s) => isDownloaded(s['title']!)).toList(),
+                        onCreate: _createPlaylistDialog,
+                        onDelete: _deletePlaylist,
+                        onAddSongs: _addToPlaylistSheet,
+                        onPlay: (pl, i) { _playFromPlaylist(pl, i); _openNowPlaying(pl.songs, i); },
+                        onPlayDownloaded: (s) {
+                          final idx = kSongs.indexWhere((x) => x['title'] == s['title']);
+                          if (idx != -1) { _playSong(idx); _openNowPlaying(kSongs, idx); }
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+      // Fix 2: global mini player visible on both tabs
       bottomNavigationBar: StreamBuilder<PlayerState>(
         stream: globalPlayer.playerStateStream,
         builder: (_, snap) {
@@ -1324,7 +1797,7 @@ class _AuraHomePageState extends State<AuraHomePage> with SingleTickerProviderSt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SONGS TAB
+// SONGS TAB  — Fix 7: playing indicator per tile
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SongsTab extends StatelessWidget {
@@ -1334,10 +1807,17 @@ class _SongsTab extends StatelessWidget {
   final ValueChanged<String> onMoodChange, onSearch;
   final void Function(int) onTap;
   final void Function(Map<String, String>) onLongPress;
+  final Map<String, String> currentSong;
+
+  final List<Color> colors;
+  final bool isActive;
 
   const _SongsTab({
     required this.filtered, required this.selMood, required this.searchCtrl,
-    required this.onMoodChange, required this.onSearch, required this.onTap, required this.onLongPress,
+    required this.onMoodChange, required this.onSearch, required this.onTap,
+    required this.onLongPress, required this.currentSong,
+    required this.colors,      // ADD
+    required this.isActive,    // ADD
   });
 
   @override
@@ -1349,13 +1829,17 @@ class _SongsTab extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Container(
-            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)),
+            decoration: BoxDecoration(
+              color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.white10,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: isActive ? Colors.white24 : Colors.white12),
+            ),
             child: TextField(
               controller: searchCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Search songs...', hintStyle: TextStyle(color: Colors.white38),
-                prefixIcon: Icon(Icons.search, color: Colors.white38),
+              style: TextStyle(color: adaptiveText(colors)),
+              decoration: InputDecoration(
+                hintText: 'Search songs...', hintStyle: TextStyle(color: adaptiveText(colors, secondary: true)),
+                prefixIcon: Icon(Icons.search, color: adaptiveText(colors, secondary: true)),
                 border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 14),
               ),
               onChanged: onSearch,
@@ -1370,7 +1854,7 @@ class _SongsTab extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: moods.length,
             itemBuilder: (_, i) {
-              final m = moods[i];
+              final m   = moods[i];
               final sel = selMood == m;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -1400,7 +1884,7 @@ class _SongsTab extends StatelessWidget {
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text('${filtered.length} TRACKS', style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
+          child: Text('${filtered.length} TRACKS', style: TextStyle(color: adaptiveText(colors, secondary: true), fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
         ),
         const SizedBox(height: 8),
         Expanded(
@@ -1408,9 +1892,11 @@ class _SongsTab extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: filtered.length,
             itemBuilder: (_, i) {
-              final s = filtered[i];
+              final s  = filtered[i];
               final gi = kSongs.indexWhere((x) => x['title'] == s['title']);
-              return _SongTile(song: s, onTap: () => onTap(gi), onLongPress: () => onLongPress(s));
+              // Fix 7: pass isPlaying flag
+              final isPlaying = currentSong['title'] == s['title'];
+              return _SongTile(song: s, onTap: () => onTap(gi), onLongPress: () => onLongPress(s), isPlaying: isPlaying);
             },
           ),
         ),
@@ -1420,13 +1906,180 @@ class _SongsTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SONG TILE
+// LIBRARY TAB  — Replaces _PlaylistsTab; adds Downloaded section + fix 2
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LibraryTab extends StatelessWidget {
+  final List<Playlist> playlists;
+  final List<Map<String, String>> downloadedSongs;
+  final VoidCallback onCreate;
+  final void Function(Playlist) onDelete;
+  final void Function({Map<String, String>? preSelected, Playlist? targetPlaylist}) onAddSongs;
+  final void Function(Playlist, int) onPlay;
+  final void Function(Map<String, String>) onPlayDownloaded;
+
+  const _LibraryTab({
+    required this.playlists, required this.downloadedSongs,
+    required this.onCreate, required this.onDelete, required this.onAddSongs,
+    required this.onPlay, required this.onPlayDownloaded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: playlistChangeNotifier,
+      builder: (_, __, ___) {
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          children: [
+            // ── Downloaded Section ──────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+              child: Row(children: [
+                const Icon(Icons.download_done_rounded, color: Colors.white38, size: 16),
+                const SizedBox(width: 6),
+                const Text('DOWNLOADED', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Text('${downloadedSongs.length} songs', style: const TextStyle(color: Colors.white24, fontSize: 11)),
+              ]),
+            ),
+            if (downloadedSongs.isEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+                child: const Column(
+                  children: [
+                    Icon(Icons.cloud_download_outlined, color: Colors.white12, size: 40),
+                    SizedBox(height: 10),
+                    Text('No downloaded songs', style: TextStyle(color: Colors.white38, fontSize: 14)),
+                    SizedBox(height: 4),
+                    Text('Download songs from the Songs tab', style: TextStyle(color: Colors.white24, fontSize: 12)),
+                  ],
+                ),
+              )
+            else
+              ...downloadedSongs.map((s) {
+                final mc = moodCfg(s['mood']!);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: s['isAsset'] == 'true'
+                          ? Image.asset(s['art']!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _ArtFallback(mc: mc, song: s))
+                          : _ArtFallback(mc: mc, song: s),
+                    ),
+                    title: Text(s['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                    subtitle: Text(s['artist']!, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                    trailing: const Icon(Icons.download_done_rounded, color: Colors.greenAccent, size: 20),
+                    onTap: () => onPlayDownloaded(s),
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 8),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 8),
+
+            // ── Playlists Section ───────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(children: [
+                const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 16),
+                const SizedBox(width: 6),
+                Text('${playlists.length} PLAYLISTS', style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: onCreate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                    child: const Row(children: [
+                      Icon(Icons.add, color: Colors.black, size: 16),
+                      SizedBox(width: 4),
+                      Text('New', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 13)),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            if (playlists.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: const Column(
+                  children: [
+                    Icon(Icons.library_music_rounded, color: Colors.white12, size: 56),
+                    SizedBox(height: 12),
+                    Text('No playlists yet', style: TextStyle(color: Colors.white38, fontSize: 15)),
+                    SizedBox(height: 6),
+                    Text('Tap "New" to create your first playlist', style: TextStyle(color: Colors.white24, fontSize: 12)),
+                  ],
+                ),
+              )
+            else
+              ...playlists.map((pl) {
+                final mc = pl.songs.isNotEmpty ? moodCfg(pl.songs[0]['mood']!) : moodCfg('Joyful');
+                return GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailPage(playlist: pl, onPlay: onPlay, onAddSongs: () => onAddSongs(targetPlaylist: pl)))),
+                  onLongPress: () => onDelete(pl),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(children: [
+                        Container(
+                          width: 52, height: 52,
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: LinearGradient(colors: mc.gradient)),
+                          child: pl.songs.isNotEmpty
+                              ? ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(pl.songs[0]['art']!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.queue_music_rounded, color: Colors.white)),
+                          )
+                              : const Icon(Icons.queue_music_rounded, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                              const SizedBox(height: 3),
+                              // Fix 6: reactive song count
+                              ValueListenableBuilder<int>(
+                                valueListenable: playlistChangeNotifier,
+                                builder: (_, __, ___) => Text('${pl.songs.length} song${pl.songs.length == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded, color: Colors.white30),
+                      ]),
+                    ),
+                  ),
+                );
+              }),
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SONG TILE  — Fix 7: isPlaying waveform indicator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SongTile extends StatelessWidget {
   final Map<String, String> song;
   final VoidCallback onTap, onLongPress;
-  const _SongTile({required this.song, required this.onTap, required this.onLongPress});
+  final bool isPlaying;
+  const _SongTile({required this.song, required this.onTap, required this.onLongPress, this.isPlaying = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1444,12 +2097,13 @@ class _SongTile extends StatelessWidget {
         return GestureDetector(
           onTap: onTap,
           onLongPress: onLongPress,
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
             margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF111111),
+              color: isPlaying ? mc.accent.withValues(alpha: 0.15) : const Color(0xFF111111),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              border: Border.all(color: isPlaying ? mc.accent.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.06)),
             ),
             child: Column(
               children: [
@@ -1470,17 +2124,29 @@ class _SongTile extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Text(title,
+                              style: TextStyle(color: isPlaying ? Colors.white : Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
                             const SizedBox(height: 3),
                             Text(song['artist']!, style: const TextStyle(color: Colors.white54, fontSize: 12)),
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(color: mc.accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
-                        child: Text(song['mood']!, style: TextStyle(color: mc.accent, fontSize: 11, fontWeight: FontWeight.w700)),
-                      ),
+                      // Fix 7: live waveform if this song is playing
+                      if (isPlaying) ...[
+                        const SizedBox(width: 8),
+                        StreamBuilder<PlayerState>(
+                          stream: globalPlayer.playerStateStream,
+                          builder: (_, snap) => WaveformBars(playing: snap.data?.playing ?? false, color: mc.accent),
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(color: mc.accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
+                          child: Text(song['mood']!, style: TextStyle(color: mc.accent, fontSize: 11, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
                       if (!isAsset) ...[
                         const SizedBox(width: 8),
                         if (downloading)
@@ -1524,115 +2190,10 @@ class _ArtFallback extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PLAYLISTS TAB
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PlaylistsTab extends StatelessWidget {
-  final List<Playlist> playlists;
-  final VoidCallback onCreate, onAddSongs;
-  final void Function(Playlist) onDelete;
-  final void Function(Playlist, int) onPlay;
-
-  const _PlaylistsTab({
-    required this.playlists, required this.onCreate, required this.onDelete,
-    required this.onAddSongs, required this.onPlay,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('${playlists.length} PLAYLISTS', style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w600)),
-              GestureDetector(
-                onTap: onCreate,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.add, color: Colors.black, size: 16),
-                      SizedBox(width: 4),
-                      Text('New Playlist', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: playlists.isEmpty
-              ? const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.library_music_rounded, color: Colors.white12, size: 64),
-                SizedBox(height: 16),
-                Text('No playlists yet', style: TextStyle(color: Colors.white38, fontSize: 16)),
-                SizedBox(height: 8),
-                Text('Tap "New Playlist" to get started', style: TextStyle(color: Colors.white24, fontSize: 13)),
-              ],
-            ),
-          )
-              : ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: playlists.length,
-            itemBuilder: (_, i) {
-              final pl = playlists[i];
-              final mc = pl.songs.isNotEmpty ? moodCfg(pl.songs[0]['mood']!) : moodCfg('Joyful');
-              return GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailPage(playlist: pl, onPlay: onPlay, onAddSongs: onAddSongs))),
-                onLongPress: () => onDelete(pl),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 52, height: 52,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: LinearGradient(colors: mc.gradient)),
-                          child: pl.songs.isNotEmpty
-                              ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.asset(pl.songs[0]['art']!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.queue_music_rounded, color: Colors.white)),
-                          )
-                              : const Icon(Icons.queue_music_rounded, color: Colors.white, size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                              const SizedBox(height: 3),
-                              Text('${pl.songs.length} song${pl.songs.length == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded, color: Colors.white30),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PLAYLIST DETAIL
+// PLAYLIST DETAIL  — Fix 3: rename playlist
+//                   Fix 4: add more songs button always visible
+//                   Fix 5: skip already-added songs
+//                   Fix 6: reactive count via notifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PlaylistDetailPage extends StatefulWidget {
@@ -1689,6 +2250,34 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     );
   }
 
+  // Fix 3: Rename playlist dialog
+  void _renamePlaylist() {
+    final ctrl = TextEditingController(text: widget.playlist.name);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Rename Playlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        content: _Field(ctrl: ctrl, hint: 'New playlist name', icon: Icons.edit_rounded),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) {
+                setState(() => widget.playlist.name = ctrl.text.trim());
+                notifyPlaylistChanged();
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pl = widget.playlist;
@@ -1702,82 +2291,127 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
           icon: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(_selectMode ? '${_selected.length} selected' : pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        title: _selectMode
+            ? Text('${_selected.length} selected', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))
+            : GestureDetector(
+          onTap: _renamePlaylist, // Fix 3: tap name to rename
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 6),
+              const Icon(Icons.edit_outlined, color: Colors.white38, size: 16),
+            ],
+          ),
+        ),
         actions: [
-          if (!_selectMode) IconButton(icon: const Icon(Icons.edit_outlined, color: Colors.white54), onPressed: _toggleSelectMode),
-        ],
-      ),
-      body: pl.songs.isEmpty
-          ? Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.music_off_rounded, color: Colors.white12, size: 64),
-            const SizedBox(height: 16),
-            const Text('No songs yet', style: TextStyle(color: Colors.white38)),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          if (!_selectMode) ...[
+            // Fix 4: Add songs button always visible
+            IconButton(
+              icon: const Icon(Icons.add_rounded, color: Colors.white70),
+              tooltip: 'Add songs',
               onPressed: widget.onAddSongs,
-              child: const Text('Add Songs', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.white54),
+              tooltip: 'Remove songs',
+              onPressed: _toggleSelectMode,
             ),
           ],
-        ),
-      )
-          : ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: pl.songs.length,
-        itemBuilder: (_, i) {
-          final s   = pl.songs[i];
-          final mc  = moodCfg(s['mood']!);
-          final sel = _selected.contains(i);
-          return GestureDetector(
-            onTap: _selectMode ? () => _toggleSelect(i) : () => widget.onPlay(pl, i),
-            onLongPress: () { if (!_selectMode) _toggleSelectMode(); _toggleSelect(i); },
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: sel ? mc.accent.withValues(alpha: 0.2) : const Color(0xFF111111),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: sel ? mc.accent : Colors.white.withValues(alpha: 0.06)),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Song count header — Fix 6: always live
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Row(children: [
+              ValueListenableBuilder<int>(
+                valueListenable: playlistChangeNotifier,
+                builder: (_, __, ___) => Text(
+                  '${pl.songs.length} song${pl.songs.length == 1 ? '' : 's'}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 1),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    if (_selectMode)
-                      Container(
-                        margin: const EdgeInsets.only(right: 10),
-                        width: 24, height: 24,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: sel ? mc.accent : Colors.white12, border: Border.all(color: sel ? mc.accent : Colors.white24)),
-                        child: sel ? const Icon(Icons.check_rounded, color: Colors.white, size: 16) : null,
-                      ),
-                    Container(
-                      width: 44, height: 44,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), gradient: LinearGradient(colors: mc.gradient)),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.asset(s['art']!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(moodIcon(s['mood']!), color: Colors.white, size: 20)),
-                      ),
+            ]),
+          ),
+          Expanded(
+            child: pl.songs.isEmpty
+                ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.music_off_rounded, color: Colors.white12, size: 64),
+                  const SizedBox(height: 16),
+                  const Text('No songs yet', style: TextStyle(color: Colors.white38)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    icon: const Icon(Icons.add_rounded),
+                    onPressed: widget.onAddSongs,
+                    label: const Text('Add Songs', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            )
+                : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: pl.songs.length,
+              itemBuilder: (_, i) {
+                final s   = pl.songs[i];
+                final mc  = moodCfg(s['mood']!);
+                final sel = _selected.contains(i);
+                return GestureDetector(
+                  onTap: _selectMode ? () => _toggleSelect(i) : () => widget.onPlay(pl, i),
+                  onLongPress: () { if (!_selectMode) _toggleSelectMode(); _toggleSelect(i); },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: sel ? mc.accent.withValues(alpha: 0.2) : const Color(0xFF111111),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: sel ? mc.accent : Colors.white.withValues(alpha: 0.06)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
                         children: [
-                          Text(s['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                          Text(s['artist']!, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                          if (_selectMode)
+                            Container(
+                              margin: const EdgeInsets.only(right: 10),
+                              width: 24, height: 24,
+                              decoration: BoxDecoration(shape: BoxShape.circle, color: sel ? mc.accent : Colors.white12, border: Border.all(color: sel ? mc.accent : Colors.white24)),
+                              child: sel ? const Icon(Icons.check_rounded, color: Colors.white, size: 16) : null,
+                            ),
+                          Container(
+                            width: 44, height: 44,
+                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), gradient: LinearGradient(colors: mc.gradient)),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.asset(s['art']!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(moodIcon(s['mood']!), color: Colors.white, size: 20)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(s['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                                Text(s['artist']!, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
-      bottomNavigationBar: (_selectMode && _selected.isNotEmpty)
+      // Fix 4: always show "Add more songs" footer button
+      bottomNavigationBar: _selectMode && _selected.isNotEmpty
           ? SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1793,7 +2427,21 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
           ),
         ),
       )
-          : null,
+          : SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.white24),
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            icon: const Icon(Icons.add_rounded, color: Colors.white54),
+            label: const Text('Add more songs', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w600)),
+            onPressed: widget.onAddSongs,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1870,7 +2518,7 @@ class MiniPlayer extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NOW PLAYING
+// NOW PLAYING  — Fix 1: mood-adaptive background already handled globally
 // ─────────────────────────────────────────────────────────────────────────────
 
 class NowPlayingPage extends StatefulWidget {
@@ -1911,7 +2559,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> with SingleTickerProvid
   Future<void> _playAt(int idx) async {
     if (idx < 0 || idx >= widget.songList.length) return;
     _artCtrl.reset();
-    final s = widget.songList[idx];
+    final s       = widget.songList[idx];
     final newMood = s['mood'] ?? 'Joyful';
     setState(() { _idx = idx; _song = s; _colors = moodCfg(newMood).gradient; });
     _currentQueueIdx = idx;
@@ -1958,8 +2606,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> with SingleTickerProvid
         children: [
           Positioned.fill(
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
+              duration: const Duration(milliseconds: 500), curve: Curves.easeInOut,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter, end: Alignment.bottomCenter,
@@ -1969,7 +2616,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> with SingleTickerProvid
               ),
             ),
           ),
-          Positioned.fill(child: _ParticlesBg(color: _colors[0], mood: _song['mood'] ?? 'Joyful')),
+          MoodParticles(moodName: _song['mood'] ?? 'Joyful', active: true),
           SafeArea(
             child: Column(
               children: [
@@ -2011,7 +2658,10 @@ class _NowPlayingPageState extends State<NowPlayingPage> with SingleTickerProvid
                           ],
                         ),
                       ),
-                      WaveformBars(playing: true, color: _colors[0]),
+                      StreamBuilder<PlayerState>(
+                        stream: globalPlayer.playerStateStream,
+                        builder: (_, snap) => WaveformBars(playing: snap.data?.playing ?? false, color: _colors[0]),
+                      ),
                     ],
                   ),
                 ),
@@ -2076,117 +2726,6 @@ class _NowPlayingPageState extends State<NowPlayingPage> with SingleTickerProvid
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PARTICLES BACKGROUND
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ParticlesBg extends StatefulWidget {
-  final Color color;
-  final String mood;
-  const _ParticlesBg({required this.color, required this.mood});
-  @override
-  State<_ParticlesBg> createState() => _ParticlesBgState();
-}
-
-class _ParticlesBgState extends State<_ParticlesBg> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late List<_Particle> _particles;
-
-  @override
-  void initState() {
-    super.initState();
-    _particles = List.generate(18, (_) => _Particle.random());
-    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 8))..repeat();
-  }
-
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, __) => CustomPaint(
-        painter: _PPainter(_ctrl.value, widget.color, _particles),
-        child: const SizedBox.expand(),
-      ),
-    );
-  }
-}
-
-class _Particle {
-  final double x, y, size, speed, phase;
-  final int type;
-  _Particle({required this.x, required this.y, required this.size, required this.speed, required this.phase, required this.type});
-  static _Particle random() {
-    final r = math.Random();
-    return _Particle(x: r.nextDouble(), y: r.nextDouble(), size: 8 + r.nextDouble() * 16, speed: 0.3 + r.nextDouble() * 0.7, phase: r.nextDouble() * math.pi * 2, type: r.nextInt(4));
-  }
-}
-
-class _PPainter extends CustomPainter {
-  final double t;
-  final Color color;
-  final List<_Particle> particles;
-  _PPainter(this.t, this.color, this.particles);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final p in particles) {
-      final y = (p.y - t * p.speed * 0.15 + 1) % 1;
-      final x = p.x + math.sin(t * math.pi * 2 * p.speed + p.phase) * 0.03;
-      final opacity = (0.15 + 0.2 * math.sin(t * math.pi * 2 + p.phase)).clamp(0.0, 1.0);
-      final paint = Paint()..color = color.withValues(alpha: opacity)..style = PaintingStyle.stroke..strokeWidth = 1;
-      canvas.save();
-      canvas.translate(x * size.width, y * size.height);
-      switch (p.type) {
-        case 0: _star(canvas, p.size, paint); break;
-        case 1: _heart(canvas, p.size, paint); break;
-        case 2: _bolt(canvas, p.size, paint); break;
-        default: _drop(canvas, p.size, paint);
-      }
-      canvas.restore();
-    }
-  }
-
-  void _star(Canvas c, double s, Paint p) {
-    final path = Path();
-    for (int i = 0; i < 5; i++) {
-      final a = -math.pi / 2 + i * 2 * math.pi / 5;
-      final b = a + math.pi / 5;
-      if (i == 0) path.moveTo(math.cos(a) * s / 2, math.sin(a) * s / 2);
-      else path.lineTo(math.cos(a) * s / 2, math.sin(a) * s / 2);
-      path.lineTo(math.cos(b) * s / 4, math.sin(b) * s / 4);
-    }
-    path.close();
-    c.drawPath(path, p);
-  }
-
-  void _heart(Canvas c, double s, Paint p) {
-    final path = Path()
-      ..moveTo(0, s / 4)
-      ..cubicTo(-s / 2, -s / 6, -s / 2, -s / 2, 0, -s / 6)
-      ..cubicTo(s / 2, -s / 2, s / 2, -s / 6, 0, s / 4);
-    c.drawPath(path, p);
-  }
-
-  void _bolt(Canvas c, double s, Paint p) {
-    final path = Path()
-      ..moveTo(s * 0.1, -s / 2)..lineTo(-s * 0.1, -s * 0.05)..lineTo(s * 0.15, -s * 0.05)
-      ..lineTo(-s * 0.1, s / 2)..lineTo(s * 0.3, -s * 0.1)..lineTo(s * 0.05, -s * 0.1)..close();
-    c.drawPath(path, p);
-  }
-
-  void _drop(Canvas c, double s, Paint p) {
-    final path = Path()
-      ..moveTo(0, -s / 2)..cubicTo(s / 3, -s / 4, s / 3, s / 4, 0, s / 2)
-      ..cubicTo(-s / 3, s / 4, -s / 3, -s / 4, 0, -s / 2)..close();
-    c.drawPath(path, p);
-  }
-
-  @override
-  bool shouldRepaint(_PPainter o) => o.t != t || o.color != color;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WAVEFORM BARS
@@ -2214,7 +2753,16 @@ class _WaveformBarsState extends State<WaveformBars> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.playing) return const SizedBox(width: 24, height: 16);
+    if (!widget.playing) {
+      return SizedBox(
+        width: 24, height: 16,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(4, (_) => Container(width: 3, height: 4, decoration: BoxDecoration(color: widget.color.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2)))),
+        ),
+      );
+    }
     return SizedBox(
       width: 24, height: 16,
       child: AnimatedBuilder(
@@ -2257,13 +2805,11 @@ class _ErrorBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(message, style: const TextStyle(color: Colors.redAccent, fontSize: 13))),
-        ],
-      ),
+      child: Row(children: [
+        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Text(message, style: const TextStyle(color: Colors.redAccent, fontSize: 13))),
+      ]),
     );
   }
 }
@@ -2319,4 +2865,17 @@ class _BigBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HelpTile extends StatelessWidget {
+  final String title, body;
+  const _HelpTile(this.title, this.body);
+  @override Widget build(BuildContext context) => Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+        const SizedBox(height: 3),
+        Text(body,  style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.5)),
+      ]));
 }
